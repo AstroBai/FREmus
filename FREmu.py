@@ -85,6 +85,21 @@ class emulator:
         return self.ks
 
     def set_cosmo(self, Om=0.3, Ob=0.05, h=0.7, ns=1.0, mnu=0.05, fR0=-3e-5, As=2e-9, redshifts=[3.0,2.0,1.0,0.5,0.0],use_emu=False):
+        """
+        
+        Set cosmology parameters for the emulator.
+        Parameters:
+        Om (float): Omega matter
+        Ob (float): Omega baryon
+        h (float): Hubble constant
+        ns (float): scalar spectral index
+        mnu (float): sum of neutrino masses
+        fR0 (float): dark energy equation of state at z=0
+        As (float): amplitude of primordial power spectrum
+        redshifts (list): list of redshifts for which to compute power spectra
+        use_emu (bool): whether to use pure emulator or Fid-Boost way to compute power spectra. Default is False, i.e. use Fid-Boost.
+        
+        """
         self.Om = Om
         self.Ob = Ob
         self.h = h
@@ -107,6 +122,16 @@ class emulator:
         
     
     def get_boost(self, k=None, z=None, return_k_values=False):
+        """
+        
+        Get boost factor for a given k and redshift.
+        Parameters:
+        k (array): wavenumbers at which to compute boost factor
+        z (float): redshift at which to compute boost factor
+        return_k_values (bool): whether to return k values along with boost factor. Default is False.
+
+        """
+        
         if z is None:
             z = 0
             print('WARNING: No redshift value given, the default value is z=0.0')
@@ -171,6 +196,17 @@ class emulator:
 
     
     def get_power_spectrum(self, k=None, z=None, return_k_values=False):
+        
+        """
+        
+        Get matter power spectrum for a given k and redshift.
+        Parameters:
+        k (array): wavenumbers at which to compute power spectrum
+        z (float): redshift at which to compute power spectrum
+        return_k_values (bool): whether to return k values along with power spectrum. Default is False.
+        
+        """
+        
         if z is None:
             z = 0
             print('WARNING: No redshift value given, the default value is z=0.0')
