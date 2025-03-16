@@ -27,9 +27,9 @@ class emulator:
     def __init__(self):
         
         module_path = os.path.dirname(__file__)
-        cache_path = os.path.join(module_path, 'cache_v1') 
+        cache_path = os.path.join(module_path, 'cache_emu') 
         cache_boost_path = os.path.join(module_path, 'cache_boost') 
-        self.ks = np.logspace(-4,0,128)
+        self.ks = np.logspace(-4,0,1024)
         self.scaler = None
         with open(os.path.join(cache_path,'scaler.pkl'), 'rb') as scaler_file:
             self.scaler = pickle.load(scaler_file)
@@ -37,23 +37,15 @@ class emulator:
         self.pc = {}
         self.mean = {}
         
-        for z in [0.0, 0.5, 1.0, 2.0, 3.0]:
-            pc = np.load(os.path.join(cache_path,f'pc_{z:.1f}.npy'))
-            self.mean[z] = pc[0, :]
-            self.pc[z] = pc[1:, :]
+        
+        pc = np.load(os.path.join(cache_path,f'pc.npy'))
+        self.mean = pc[0, :]
+        self.pc = pc[1:, :]
         n_hidd = 256
         n_out = 24
-        self.model0 = BkANN(7, n_hidd, n_hidd, n_out)
-        self.model05 = BkANN(7, n_hidd, n_hidd, n_out)
-        self.model1 = BkANN(7, n_hidd, n_hidd, n_out)
-        self.model2 = BkANN(7, n_hidd, n_hidd, n_out)
-        self.model3 = BkANN(7, n_hidd, n_hidd, n_out)
-            
-        self.model0.load_state_dict(torch.load(os.path.join(cache_path,'ann_0.0.pth')))
-        self.model05.load_state_dict(torch.load(os.path.join(cache_path,'ann_0.5.pth')))
-        self.model1.load_state_dict(torch.load(os.path.join(cache_path,'ann_1.0.pth')))
-        self.model2.load_state_dict(torch.load(os.path.join(cache_path,'ann_2.0.pth')))
-        self.model3.load_state_dict(torch.load(os.path.join(cache_path,'ann_3.0.pth')))
+        self.model = BkANN(8, n_hidd, n_hidd, n_out)
+        self.model.load_state_dict(torch.load(os.path.join(cache_path,'ann.pth')))
+
         
         
         # for boost
@@ -85,6 +77,7 @@ class emulator:
         return self.ks
 
     def set_cosmo(self, Om=0.3, Ob=0.05, h=0.7, ns=1.0, mnu=0.05, fR0=-3e-5, As=2e-9, redshifts=[3.0,2.0,1.0,0.5,0.0],use_emu=False):
+        
         """
         
         Set cosmology parameters for the emulator.
@@ -100,11 +93,13 @@ class emulator:
         use_emu (bool): whether to use pure emulator or Fid-Boost way to compute power spectra. Default is False, i.e. use Fid-Boost.
         
         """
+        
         self.Om = Om
         self.Ob = Ob
         self.h = h
         self.ns = ns
         self.As = As
+        self.logA = np.log(As*1e10)
         self.mnu = mnu
         self.fR0 = fR0
         self.Onu = mnu / 93.14 / h**2
@@ -122,6 +117,7 @@ class emulator:
         
     
     def get_boost(self, k=None, z=None, return_k_values=False):
+        
         """
         
         Get boost factor for a given k and redshift.
@@ -141,7 +137,7 @@ class emulator:
     
         try:
             # Step 1: Prepare parameters for ANN
-            params = np.array([self.Om, self.Ob, self.h, self.ns, self.mnu, self.fR0, self.As])
+            params = np.array([self.Om, self.Ob, self.h, self.ns, self.mnu, self.fR0, self.logA])
             X = params.reshape(1, -1)
             X = self.scaler_boost.transform(X)
             X_tensor = torch.tensor(X, dtype=torch.float32)
@@ -195,7 +191,7 @@ class emulator:
 
 
     
-    def get_power_spectrum(self, k=None, z=None, return_k_values=False):
+    def get_power_spectrum(self, k=None, z=None, return_k_values=False, cut_off_k=None):
         
         """
         
@@ -210,7 +206,7 @@ class emulator:
         if z is None:
             z = 0
             print('WARNING: No redshift value given, the default value is z=0.0')
-
+        self.a = 1/(1+z)
         if k is None:
             k = self.ks
 
@@ -218,51 +214,26 @@ class emulator:
         
             try:
                 # Step 1: Prepare parameters for ANN
-                params = np.array([self.Om, self.Ob, self.h, self.ns, self.mnu, self.fR0, self.As])
+                params = np.array([self.Om, self.Ob, self.h, self.ns, self.mnu, self.fR0, self.logA, self.a])
                 X = params.reshape(1, -1)
                 X = self.scaler.transform(X)
                 X_tensor = torch.tensor(X, dtype=torch.float32)
-            
-                # Step 2: Identify redshift range for ANN
-                z_range = None
-                for range_ in [(0.0, 0.5), (0.5, 1.0), (1.0, 2.0), (2.0, 3.0)]:
-                    if range_[0] <= z <= range_[1]:
-                        z_range = range_
-                        break
-
-                if z_range is None:
-                    raise ValueError('Redshift should be between 0.0 and 3.0')
+    
             
                 # Step 3: Get ANN predictions for Bk
-                pc0 = self.pc[0.0]
-                pc05 = self.pc[0.5]
-                pc1 = self.pc[1.0]
-                pc2 = self.pc[2.0]
-                pc3 = self.pc[3.0]
-                mean0 = self.mean[0.0]
-                mean05 = self.mean[0.5]
-                mean1 = self.mean[1.0]
-                mean2 = self.mean[2.0]
-                mean3 = self.mean[3.0]
+                pc = self.pc
+                mean = self.mean
+
             
                 with torch.no_grad():
-                    w_tensor0 = self.model0(X_tensor)
-                    w_tensor05 = self.model05(X_tensor)
-                    w_tensor1 = self.model1(X_tensor)
-                    w_tensor2 = self.model2(X_tensor)
-                    w_tensor3 = self.model3(X_tensor)
-                
-                    Pk0 = np.dot(w_tensor0.numpy(), pc0) + mean0
-                    Pk05 = np.dot(w_tensor05.numpy(), pc05) + mean05
-                    Pk1 = np.dot(w_tensor1.numpy(), pc1) + mean1
-                    Pk2 = np.dot(w_tensor2.numpy(), pc2) + mean2
-                    Pk3 = np.dot(w_tensor3.numpy(), pc3) + mean3
-                
-                Pk = CubicSpline(np.array([0.0, 0.5, 1.0, 2.0, 3.0]), np.array([Pk0, Pk05, Pk1, Pk2, Pk3]), axis=0)
-                Pk = Pk(z)
+                    w_tensor = self.model(X_tensor)
+                    Pk = np.dot(w_tensor.numpy(), pc) + mean
+
                 Pk = Pk.reshape(-1, 1)
                 Pk_interp = CubicSpline(self.ks, Pk)
                 pk_mg = 10 ** Pk_interp(k)
+                if cut_off_k is not None:
+                    pk_mg[k>cut_off_k] = 1e-10
                 if return_k_values:
                     pk_mg = np.column_stack((k, pk_mg))
 
@@ -274,6 +245,8 @@ class emulator:
             pk_fid = self.mpi.P(z,k)        
             bk = self.get_boost(k=k, z=z, return_k_values=False)
             pk_mg = pk_fid * bk
+            if cut_off_k is not None:
+                pk_mg[k>cut_off_k] = 1e-10
             if return_k_values:
                 pk_mg = np.column_stack((k, pk_mg))
             return pk_mg.ravel()
