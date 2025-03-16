@@ -191,7 +191,7 @@ class emulator:
 
 
     
-    def get_power_spectrum(self, k=None, z=None, return_k_values=False, cut_off_k=None):
+    def get_power_spectrum(self, k=None, z=None, return_k_values=False):
         
         """
         
@@ -232,8 +232,6 @@ class emulator:
                 Pk = Pk.reshape(-1, 1)
                 Pk_interp = CubicSpline(self.ks, Pk)
                 pk_mg = 10 ** Pk_interp(k)
-                if cut_off_k is not None:
-                    pk_mg[k>cut_off_k] = 1e-10
                 if return_k_values:
                     pk_mg = np.column_stack((k, pk_mg))
 
@@ -245,8 +243,6 @@ class emulator:
             pk_fid = self.mpi.P(z,k)        
             bk = self.get_boost(k=k, z=z, return_k_values=False)
             pk_mg = pk_fid * bk
-            if cut_off_k is not None:
-                pk_mg[k>cut_off_k] = 1e-10
             if return_k_values:
                 pk_mg = np.column_stack((k, pk_mg))
             return pk_mg.ravel()
