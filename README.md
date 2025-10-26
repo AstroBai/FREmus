@@ -1,4 +1,4 @@
-# FREmus - New Version for FREmu: Power Spectrum Emulator for f(R) Gravity
+# FREmus - New Version for FREmu: Power Spectrum Emulator for $f(R)$ Gravity
 
 ## What's New?
 
